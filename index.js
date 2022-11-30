@@ -6,6 +6,7 @@ const { google } = require('googleapis');
 const logger = require('pino')();
 const axios = require('axios').default;
 const request = require('request');
+const { post } = require('request');
 // const Feed = require('feed').default;
 // const feed = new Feed({
 //   title: 'Feed Title',
@@ -119,6 +120,10 @@ async function checkAPI(auth) {
       json.push(newResults);
       const res = '[\n' + json.map((e) => '  ' + JSON.stringify(e)).join(',\n') + '\n]';
       await fs.writeFile('results.json', err);
+      request({ method: 'POST', uri: 'https://birb.emu.sh/api/webhook/L4GR7YVo968YNiC1MxwjZVxk' }, function (error, response, body) {
+        if (error) logger.info(error);
+        logger.info(body);
+      });
       //add to feed
       await createEvent(auth);
     } else {
@@ -134,6 +139,10 @@ async function checkAPI(auth) {
       json.push(newResults);
       const err = '[\n' + json.map((e) => '  ' + JSON.stringify(e)).join(',\n') + '\n]';
       await fs.writeFile('error.json', err);
+      request({ method: 'POST', uri: 'https://birb.emu.sh/api/webhook/L3GR7YVo968YNiC1MxwjZVxk' }, function (error, response, body) {
+        if (error) logger.info(error);
+        logger.info(body);
+      });
     }
   });
 }
