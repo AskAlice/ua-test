@@ -119,7 +119,7 @@ async function checkAPI(auth) {
       };
       json.push(newResults);
       const res = '[\n' + json.map((e) => '  ' + JSON.stringify(e)).join(',\n') + '\n]';
-      await fs.writeFile('results.json', err);
+      await fs.writeFile('results.json', res);
       request({ method: 'POST', uri: 'https://birb.emu.sh/api/webhook/L4GR7YVo968YNiC1MxwjZVxk' }, function (error, response, body) {
         if (error) logger.info(error);
         logger.info(body);
