@@ -1,12 +1,21 @@
-const fs = require('fs').promises;
-const path = require('path');
-const process = require('process');
-const { authenticate } = require('@google-cloud/local-auth');
-const { google } = require('googleapis');
-const logger = require('pino')();
-const axios = require('axios').default;
-const request = require('request');
-const { post } = require('request');
+const fs = require("fs").promises;
+const path = require("path");
+const process = require("process");
+const { authenticate } = require("@google-cloud/local-auth");
+const { google } = require("googleapis");
+const axios = require("axios").default;
+const request = require("request");
+const { post } = require("request");
+const pino = require("pino");
+const transport = pino.transport({
+  targets: [
+    { target: "pino-pretty", options: { destination: 1 } },
+    { target: "pino/file", options: { destination: "results.log" } },
+  ],
+});
+const logger = pino(transport);
+//
+//
 // const Feed = require('feed').default;
 // const feed = new Feed({
 //   title: 'Feed Title',
@@ -26,12 +35,12 @@ const { post } = require('request');
 // });
 
 // If modifying these scopes, delete token.json.
-const SCOPES = ['https://www.googleapis.com/auth/calendar'];
+const SCOPES = ["https://www.googleapis.com/auth/calendar"];
 // The file token.json stores the user's access and refresh tokens, and is
 // created automatically when the authorization flow completes for the first
 // time.
-const TOKEN_PATH = path.join(process.cwd(), 'token.json');
-const CREDENTIALS_PATH = path.join(process.cwd(), 'credentials.json');
+const TOKEN_PATH = path.join(process.cwd(), "token.json");
+const CREDENTIALS_PATH = path.join(process.cwd(), "credentials.json");
 
 /**
  * Reads previously authorized credentials from the save file.
@@ -59,7 +68,7 @@ async function saveCredentials(client) {
   const keys = JSON.parse(content);
   const key = keys.installed || keys.web;
   const payload = JSON.stringify({
-    type: 'authorized_user',
+    type: "authorized_user",
     client_id: key.client_id,
     client_secret: key.client_secret,
     refresh_token: client.credentials.refresh_token,
@@ -88,47 +97,34 @@ async function authorize() {
 
 async function checkAPI(auth) {
   const options = {
-    method: 'POST',
-    url: 'https://sentry.cordanths.com/Sentry/WebCheckin/Log',
+    method: "POST",
+    url: "https://sentry.cordanths.com/Sentry/WebCheckin/Log",
     headers: {
-      Accept: 'application/json, text/javascript, */*; q=0.01',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      Accept: "application/json, text/javascript, */*; q=0.01",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
     },
-    form: { phone: '3035520646', last_name: 'Knag', ivr_code: '95698599', lang: 'en' },
-    jar: 'JAR',
+    form: { phone: "3035520646", last_name: "Knag", ivr_code: "95698599", lang: "en" },
+    jar: "JAR",
   };
 
   request(options, async function (error, response, body) {
     if (error) {
-      logger.info(error);
+      logger.error(error);
       throw new Error(error);
     }
-    logger.info(body);
     const results = JSON.parse(body);
     if (results[0]?.required_test === 1) {
       logger.info(JSON.stringify(results));
-      //append to results.json file
-      const content = await fs.readFile('results.json');
-      const json = JSON.parse(content);
-      const newResults = {
-        date: results[0].date,
-        msg: results[0].text,
-        required_test: results[0].required_test,
-        tx: results[0].transaction_key,
-      };
-      json.push(newResults);
-      const res = '[\n' + json.map((e) => '  ' + JSON.stringify(e)).join(',\n') + '\n]';
-      await fs.writeFile('results.json', res);
-      request({ method: 'POST', uri: 'https://birb.emu.sh/api/webhook/L4GR7YVo968YNiC1MxwjZVxk' }, function (error, response, body) {
+      request({ method: "POST", uri: "https://birb.emu.sh/api/webhook/L4GR7YVo968YNiC1MxwjZVxk" }, function (error, response, body) {
         if (error) logger.info(error);
-        logger.info(body);
+        // logger.info(body);
       });
       //add to feed
       await createEvent(auth);
     } else {
-      logger.info(results);
-      const content = await fs.readFile('error.json');
+      logger.error(JSON.stringify(results));
+      const content = await fs.readFile("error.json");
       const json = JSON.parse(content);
       const newResults = {
         date: new Date().toISOString(),
@@ -137,9 +133,9 @@ async function checkAPI(auth) {
         donor: results[0].donor,
       };
       json.push(newResults);
-      const err = '[\n' + json.map((e) => '  ' + JSON.stringify(e)).join(',\n') + '\n]';
-      await fs.writeFile('error.json', err);
-      request({ method: 'POST', uri: 'https://birb.emu.sh/api/webhook/L3GR7YVo968YNiC1MxwjZVxk' }, function (error, response, body) {
+      const err = "[\n" + json.map((e) => "  " + JSON.stringify(e)).join(",\n") + "\n]";
+      await fs.writeFile("error.json", err);
+      request({ method: "POST", uri: "https://birb.emu.sh/api/webhook/L3GR7YVo968YNiC1MxwjZVxk" }, function (error, response, body) {
         if (error) logger.info(error);
         logger.info(body);
       });
@@ -148,49 +144,105 @@ async function checkAPI(auth) {
 }
 
 async function createEvent(auth) {
-  const calendar = google.calendar({ version: 'v3', auth });
+  const calendar = google.calendar({ version: "v3", auth });
   const now = new Date();
-  const five = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 17, 00, 0, 0);
-  const eleven = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 0, 0, 0);
+  const eventSummary = "Get tested";
 
+  // Check if an event with the same name already exists
+  const eventsList = await calendar.events.list({
+    calendarId: "primary",
+    timeMin: now.toISOString(),
+    singleEvents: true,
+    orderBy: "startTime",
+  });
+
+  const existingEvent = eventsList.data.items.find((event) => {
+    const eventDate = new Date(event.start.dateTime || event.start.date);
+    return (
+      event.summary === eventSummary &&
+      eventDate.getDate() === now.getDate() &&
+      eventDate.getMonth() === now.getMonth() &&
+      eventDate.getFullYear() === now.getFullYear()
+    );
+  });
+
+  if (existingEvent) {
+    logger.info("Event already exists today:", existingEvent.htmlLink);
+    return;
+  }
+
+  // Create a new event
   const event = {
-    summary: 'Get tested',
-    location: '1651 Kendall Street, Lakewood, CO 80214',
-    description: 'https://www.int-cjs.org/',
+    summary: eventSummary,
+    location: "1651 Kendall Street, Lakewood, CO 80214",
+    description: "https://www.int-cjs.org/",
     start: {
-      dateTime: five,
-      timeZone: 'America/Denver',
+      dateTime: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 17, 00, 0, 0),
+      timeZone: "America/Denver",
     },
     end: {
-      dateTime: eleven,
-      timeZone: 'America/Denver',
+      dateTime: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 22, 0, 0, 0),
+      timeZone: "America/Denver",
     },
-    attendees: [{ email: 'alice@askalice.me' }],
     reminders: {
       useDefault: false,
       overrides: [
-        { method: 'email', minutes: 4 * 60 },
-        { method: 'popup', minutes: 30 },
-        { method: 'popup', minutes: 60 },
-        { method: 'popup', minutes: 90 },
-        { method: 'popup', minutes: 120 },
+        { method: "email", minutes: 4 * 60 },
+        { method: "popup", minutes: 30 },
+        { method: "popup", minutes: 60 },
+        { method: "popup", minutes: 90 },
+        { method: "popup", minutes: 120 },
       ],
     },
   };
-
+  const event2 = {
+    ...event,
+    start: {
+      dateTime: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 22, 00, 0, 0),
+      timeZone: "America/Denver",
+    },
+    end: {
+      dateTime: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 0, 0, 0),
+      timeZone: "America/Denver",
+    },
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: "popup", minutes: 30 },
+        { method: "popup", minutes: 60 },
+        { method: "popup", minutes: 90 },
+        { method: "popup", minutes: 180 },
+        { method: "popup", minutes: 240 },
+      ],
+    },
+  };
   await calendar.events.insert(
     {
       auth: auth,
-      calendarId: 'primary',
+      calendarId: "primary",
       resource: event,
     },
     function (err, event) {
       if (err) {
-        logger.info('There was an error contacting the Calendar service: ' + err);
+        logger.info("There was an error contacting the Calendar service: " + err);
         return;
       }
-      logger.info('Event created: %s', event.htmlLink);
+      logger.info(`Event created: ${event.htmlLink}`);
+    }
+  );
+  await calendar.events.insert(
+    {
+      auth: auth,
+      calendarId: "primary",
+      resource: event2,
+    },
+    function (err, event) {
+      if (err) {
+        logger.info("There was an error contacting the Calendar service: " + err);
+        return;
+      }
+      logger.info(`Event created: ${event.htmlLink}`);
     }
   );
 }
-authorize().then(checkAPI).catch(console.error);
+authorize().then(checkAPI).catch(logger.error);
