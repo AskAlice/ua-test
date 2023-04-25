@@ -3,4 +3,5 @@ credentials.json
 error.json
 token.json
 pushbullet.json
-results.json
+results.*
+results.log
