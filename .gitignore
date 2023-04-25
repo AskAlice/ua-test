@@ -5,3 +5,4 @@ token.json
 pushbullet.json
 results.*
 results.log
+.env

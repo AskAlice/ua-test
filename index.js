@@ -7,6 +7,7 @@ const axios = require("axios").default;
 const request = require("request");
 const { post } = require("request");
 const pino = require("pino");
+require("dotenv").config();
 const transport = pino.transport({
   targets: [
     { target: "pino-pretty", options: { destination: 1 } },
@@ -14,31 +15,8 @@ const transport = pino.transport({
   ],
 });
 const logger = pino(transport);
-//
-//
-// const Feed = require('feed').default;
-// const feed = new Feed({
-//   title: 'Feed Title',
-//   description: 'This is my personal feed!',
-//   id: 'http://tests.birb.emu.sh/',
-//   link: 'http://tests.birb.emu.sh/',
-//   language: 'en', // optional, used only in RSS 2.0, possible values: http://www.w3.org/TR/REC-html40/struct/dirlang.html#langcodes
-//   image: 'http://example.com/image.png',
-//   favicon: 'http://example.com/favicon.ico',
-//   copyright: 'All rights reserved 2013, John Doe',
-//   updated: new Date(), // optional, default = today
-//   generator: 'awesome', // optional, default = 'Feed for Node.js'
-//   feedLinks: {
-//     json: 'https://tests.birb.emu.sh/json',
-//     atom: 'https://tests.birb.emu.sh/atom',
-//   },
-// });
 
-// If modifying these scopes, delete token.json.
 const SCOPES = ["https://www.googleapis.com/auth/calendar"];
-// The file token.json stores the user's access and refresh tokens, and is
-// created automatically when the authorization flow completes for the first
-// time.
 const TOKEN_PATH = path.join(process.cwd(), "token.json");
 const CREDENTIALS_PATH = path.join(process.cwd(), "credentials.json");
 
@@ -96,6 +74,7 @@ async function authorize() {
 }
 
 async function checkAPI(auth) {
+  const { TEST_PHONE_NUMBER: phoneNumber, YOUR_LAST_NAME: lastName, SENTRY_ID_NUMBER: sentryId } = process.env;
   const options = {
     method: "POST",
     url: "https://sentry.cordanths.com/Sentry/WebCheckin/Log",
@@ -104,11 +83,13 @@ async function checkAPI(auth) {
       "Accept-Language": "en-US,en;q=0.9",
       "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
     },
-    form: { phone: "3035520646", last_name: "Knag", ivr_code: "95698599", lang: "en" },
+    form: { phone: phoneNumber, last_name: lastName, ivr_code: sentryId, lang: "en" },
     jar: "JAR",
   };
-
+  logger.debug(JSON.stringify(options));
   request(options, async function (error, response, body) {
+    const testRequiredWebhook = process.env.TEST_REQUIRED_WEBHOOK;
+    const noTestWebhook = process.env.NO_TEST_WEBHOOK;
     if (error) {
       logger.error(error);
       throw new Error(error);
@@ -116,10 +97,11 @@ async function checkAPI(auth) {
     const results = JSON.parse(body);
     if (results[0]?.required_test === 1) {
       logger.info(JSON.stringify(results));
-      request({ method: "POST", uri: "https://birb.emu.sh/api/webhook/L4GR7YVo968YNiC1MxwjZVxk" }, function (error, response, body) {
-        if (error) logger.info(error);
-        // logger.info(body);
-      });
+      if (typeof testRequiredWebhook === "string") {
+        request({ method: "POST", uri: testRequiredWebhook }, function (error, response, body) {
+          if (error) logger.info(error);
+        });
+      }
       //add to feed
       await createEvent(auth);
     } else {
@@ -135,10 +117,12 @@ async function checkAPI(auth) {
       json.push(newResults);
       const err = "[\n" + json.map((e) => "  " + JSON.stringify(e)).join(",\n") + "\n]";
       await fs.writeFile("error.json", err);
-      request({ method: "POST", uri: "https://birb.emu.sh/api/webhook/L3GR7YVo968YNiC1MxwjZVxk" }, function (error, response, body) {
-        if (error) logger.info(error);
-        logger.info(body);
-      });
+      if (typeof noTestWebhook === "string") {
+        request({ method: "POST", uri: noTestWebhook }, function (error, response, body) {
+          if (error) logger.info(error);
+          logger.info(body);
+        });
+      }
     }
   });
 }
@@ -174,15 +158,15 @@ async function createEvent(auth) {
   // Create a new event
   const event = {
     summary: eventSummary,
-    location: "1651 Kendall Street, Lakewood, CO 80214",
-    description: "https://www.int-cjs.org/",
+    location: process.env.TEST_LOCATION,
+    description: process.env.TEST_EVENT_DESCRIPTION,
     start: {
       dateTime: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 17, 00, 0, 0),
-      timeZone: "America/Denver",
+      timeZone: process.env.TIMEZONE || "America/Denver",
     },
     end: {
       dateTime: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 22, 0, 0, 0),
-      timeZone: "America/Denver",
+      timeZone: process.env.TIMEZONE || "America/Denver",
     },
     reminders: {
       useDefault: false,
@@ -199,11 +183,11 @@ async function createEvent(auth) {
     ...event,
     start: {
       dateTime: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 22, 00, 0, 0),
-      timeZone: "America/Denver",
+      timeZone: process.env.TIMEZONE || "America/Denver",
     },
     end: {
       dateTime: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 0, 0, 0),
-      timeZone: "America/Denver",
+      timeZone: process.env.TIMEZONE || "America/Denver",
     },
     reminders: {
       useDefault: false,
@@ -245,4 +229,6 @@ async function createEvent(auth) {
     }
   );
 }
-authorize().then(checkAPI).catch(logger.error);
+authorize()
+  .then(checkAPI)
+  .catch((e) => logger.error(e.message));
